@@ -1,14 +1,15 @@
 package database
 
 import (
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 	"io/fs"
 	"os"
 	"path"
 	"x-ui/config"
 	"x-ui/database/model"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var db *gorm.DB
@@ -25,8 +26,8 @@ func initUser() error {
 	}
 	if count == 0 {
 		user := &model.User{
-			Username: "admin",
-			Password: "admin",
+			Username: "sprite",
+			Password: "sprite",
 		}
 		return db.Create(user).Error
 	}

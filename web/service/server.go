@@ -5,21 +5,22 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"time"
+	"x-ui/logger"
+	"x-ui/xray"
+
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
 	"github.com/shirou/gopsutil/load"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/shirou/gopsutil/net"
-	"io"
-	"io/fs"
-	"net/http"
-	"os"
-	"runtime"
-	"time"
-	"x-ui/logger"
-	"x-ui/util/sys"
-	"x-ui/xray"
 )
 
 type ProcessState string
@@ -143,12 +144,12 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		logger.Warning("can not find io counters")
 	}
 
-	status.TcpCount, err = sys.GetTCPCount()
+	status.TcpCount, err = GetTCPCount()
 	if err != nil {
 		logger.Warning("get tcp connections failed:", err)
 	}
 
-	status.UdpCount, err = sys.GetUDPCount()
+	status.UdpCount, err = GetUDPCount()
 	if err != nil {
 		logger.Warning("get udp connections failed:", err)
 	}
@@ -298,4 +299,84 @@ func (s *ServerService) UpdateXray(version string) error {
 
 	return nil
 
+}
+func getLinesNum(filename string) (int, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	sum := 0
+	buf := make([]byte, 8192)
+	for {
+		n, err := file.Read(buf)
+
+		var buffPosition int
+		for {
+			i := bytes.IndexByte(buf[buffPosition:], '\n')
+			if i < 0 || n == buffPosition {
+				break
+			}
+			buffPosition += i + 1
+			sum++
+		}
+
+		if err == io.EOF {
+			return sum, nil
+		} else if err != nil {
+			return sum, err
+		}
+	}
+}
+
+func GetTCPCount() (int, error) {
+	root := HostProc()
+
+	tcp4, err := getLinesNum(fmt.Sprintf("%v/net/tcp", root))
+	if err != nil {
+		return tcp4, err
+	}
+	tcp6, err := getLinesNum(fmt.Sprintf("%v/net/tcp6", root))
+	if err != nil {
+		return tcp4 + tcp6, nil
+	}
+
+	return tcp4 + tcp6, nil
+}
+
+func GetUDPCount() (int, error) {
+	root := HostProc()
+
+	udp4, err := getLinesNum(fmt.Sprintf("%v/net/udp", root))
+	if err != nil {
+		return udp4, err
+	}
+	udp6, err := getLinesNum(fmt.Sprintf("%v/net/udp6", root))
+	if err != nil {
+		return udp4 + udp6, nil
+	}
+
+	return udp4 + udp6, nil
+}
+func HostProc(combineWith ...string) string {
+	return GetEnv("HOST_PROC", "/proc", combineWith...)
+}
+func GetEnv(key string, dfault string, combineWith ...string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		value = dfault
+	}
+
+	switch len(combineWith) {
+	case 0:
+		return value
+	case 1:
+		return filepath.Join(value, combineWith[0])
+	default:
+		all := make([]string, len(combineWith)+1)
+		all[0] = value
+		copy(all[1:], combineWith)
+		return filepath.Join(all...)
+	}
 }
